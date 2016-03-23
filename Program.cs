@@ -5,10 +5,26 @@ namespace SimpleFileTransfer
 {
 	class Program
 	{
+		private static Server _server;
+		
 		/// <summary>
 		/// Сервер.
 		/// </summary>
-		private static Server _server;
+		private static Server Server
+		{
+			get
+			{
+				if (_server == null)
+				{
+					_server = new Server();
+				}
+				if (_server.Running)
+				{
+					_server.Stop();
+				}
+				return _server;
+			}
+		}
 		
 		static void Main(string[] args)
 		{
@@ -24,27 +40,30 @@ namespace SimpleFileTransfer
 					{
 						case "ss":
 						case "StartServer":
-							if (_server == null)
-							{
-								_server = new Server();
-							}
-							if (_server.Running)
-							{
-								_server.Stop();
-							}
-							_server.Start(command[1]);
-							Console.WriteLine("Сервер запущен. Локальный адрес {0}", command[1]);
+							Server.Start(command[1], int.Parse(command[2]));
+							Console.WriteLine("Сервер запущен. Локальный адрес {0}:{1}", command[1], int.Parse(command[2]));
 							break;
 						case "sf":
 						case "SendFile":
-							Server.SendFile(command[1], command[2]);
+							Server.SendFile(command[1], int.Parse(command[2]), command[2]);
 							Console.WriteLine("Файл {0} отправлен по адресу {1}.", command[2], command[1]);
 							break;
 
 						case "sfaep":
 						case "SendFileAndExecProc":
-							Server.SendFile(command[1], command[2], true);
-							Console.WriteLine("Файл {0} отправлен по адресу {1}. Ожидается файл с результатом.", command[2], command[1]);
+							Server.SendFile(command[1], int.Parse(command[2]), command[3], true);
+							Console.WriteLine("Файл {0} отправлен по адресу {1}:{2}. Ожидается файл с результатом.", command[3], command[1], command[2]);
+							break;
+						case "Test":
+							new Test().StartTest(int.Parse(command[1]));
+							break;
+						case "sst":
+							Server.Start("192.168.1.64", 1234);
+							Console.WriteLine("Сервер запущен. Локальный адрес {0}", "192.168.1.64:1234");
+							break;
+						case "ssd":
+							Server.Start("192.168.1.64", 1235);
+							Console.WriteLine("Сервер запущен. Локальный адрес {0}", "192.168.1.64:1235");
 							break;
 						default:
 							Console.WriteLine("Команда не найдена.");
