@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.Remoting.Messaging;
 using System.Text;
 using System.Threading;
@@ -30,10 +31,10 @@ namespace SimpleFileTransfer
 			}
 		}
 
-		public void StartTest(int count, int port = 1235)
+		public void StartTest(int count, IPAddress ip, int port, string file_name)
 		{
 			TimeSpan total = new TimeSpan(0);
-			
+			Server.FileSize = -1;
 			Stopwatch stopWatch = new Stopwatch();
 			for (int j = 0; j < TEST_COUNT; j++)
 			{
@@ -45,7 +46,7 @@ namespace SimpleFileTransfer
 					{
 						try
 						{
-							Server.SendFile("192.168.1.64", port, "1.jpg", true);
+							Server.SendFile(ip, port, file_name, true);
 							//Log("Отправлен файл");
 						}
 						catch (Exception e)
@@ -72,11 +73,11 @@ namespace SimpleFileTransfer
 				if (stopWatch.Elapsed.TotalSeconds >= TIMEOUT_SEC)
 				{
 					j--;
+					Console.WriteLine("Привышено время ожидания результата.");
 					continue;
 				}
 
 				Server.ReceviceFileCount = 0;
-				Server.FileSize = -1;
 				TimeSpan ts = stopWatch.Elapsed;
 				total += ts;
 				string elapsedTime = String.Format("{0:00}:{1:00}:{2:00}.{3:000}",

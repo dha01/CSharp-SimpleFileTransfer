@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SimpleFileTransfer
 {
@@ -13,12 +14,14 @@ namespace SimpleFileTransfer
 
 		static public int ReceviceFileCount = 0;
 
-		static public long FileSize = -1;
+		static public long? FileSize = null;
 
 		/// <summary>
 		/// Порт.
 		/// </summary>
-		private const int PORT = 1235;
+		private int PORT = 1234;
+
+		private int _remotePort = 1234;
 
 		/// <summary>
 		/// Максимальный размер очереди.
@@ -47,6 +50,8 @@ namespace SimpleFileTransfer
 
 		private static int _fileCount = 0;
 
+		public static bool IsDeleteFiles = true;
+
 		#endregion
 
 		#region Methods
@@ -56,15 +61,25 @@ namespace SimpleFileTransfer
 		/// </summary>
 		/// <param name="ip_address">IP-адресс.</param>
 		/// <returns></returns>
-		public bool Start(string ip_address, int port)
+		public bool Start(string ip_address, int port, int? remote_port = null)
 		{
+			PORT = port;
+			if (!remote_port.HasValue)
+			{
+				_remotePort = port;
+			}
+			else
+			{
+				_remotePort = remote_port.Value;
+			}
+			
 			if (Running) return false; // Если уже запущено, то выходим
 
 			try
 			{
 				// tcp/ip сокет (ipv4)
 				_serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-				_serverSocket.Bind(new IPEndPoint(IPAddress.Parse(ip_address), port));
+				_serverSocket.Bind(new IPEndPoint(IPAddress.Parse(ip_address), PORT));
 				_serverSocket.Listen(MAX_QUEUE);
 				_serverSocket.ReceiveTimeout = TIMEOUT;
 				_serverSocket.SendTimeout = TIMEOUT;
@@ -85,7 +100,7 @@ namespace SimpleFileTransfer
 					{
 						clientSocket = _serverSocket.Accept();
 						// Создаем новый поток для нового клиента и продолжаем слушать сокет.
-						Thread request_handler = new Thread(() =>
+						Task request_handler = new Task(() =>
 						{
 							clientSocket.ReceiveTimeout = TIMEOUT;
 							clientSocket.SendTimeout = TIMEOUT;
@@ -157,18 +172,21 @@ namespace SimpleFileTransfer
 		/// <param name="port"></param>
 		/// <param name="file_name">Удаленный порт.</param>
 		/// <param name="exec_proc">Будет ли вызвано выполнение подпрограммы на принимающей стороне.</param>
-		static public void SendFile(string ip, int port, string file_name, bool exec_proc = false)
+		static public void SendFile(IPAddress ip, int port, string file_name, bool exec_proc = false)
 		{
 			FileInfo file = new FileInfo(file_name);
-			FileSize = file.Length;
-			
+
+			if (FileSize.HasValue)
+			{
+				FileSize = file.Length;
+			}
+
 			// Открываем файл для чтения.
 			using (var fs = new FileStream(file_name, FileMode.Open, FileAccess.Read, FileShare.Read))
 			{
 				// Устанавливаем соединение через сокет.
-				var ip_address = IPAddress.Parse(ip);
-				Socket socket = new Socket(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-				socket.Connect(new IPEndPoint(ip_address, port));
+				Socket socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+				socket.Connect(new IPEndPoint(ip, port));
 
 				// Отправляем тип сообщения.
 				socket.Send(new[] { (byte)(exec_proc ? MesasageType.ReveiveFileAndExecProc : MesasageType.ReceiveFile) }, 1, SocketFlags.None);
@@ -186,6 +204,18 @@ namespace SimpleFileTransfer
 				socket.Shutdown(SocketShutdown.Both);
 				socket.Close();
 			}
+		}
+
+		/// <summary>
+		/// Отправляет файл по указанному адресу.
+		/// </summary>
+		/// <param name="ip">Удаленный IP-адрес.</param>
+		/// <param name="port"></param>
+		/// <param name="file_name">Удаленный порт.</param>
+		/// <param name="exec_proc">Будет ли вызвано выполнение подпрограммы на принимающей стороне.</param>
+		static public void SendFile(string ip, int port, string file_name, bool exec_proc = false)
+		{
+			SendFile(IPAddress.Parse(ip), port, file_name, exec_proc);
 		}
 
 		/// <summary>
@@ -220,21 +250,31 @@ namespace SimpleFileTransfer
 
 			FileInfo file = new FileInfo(tmp_file_name);
 
-			if (FileSize == file.Length)
-			{
-				ReceviceFileCount++;
-			}
-
 			//Test.Log(string.Format("Принят файл"));
+
+			if(FileSize.HasValue)
+			{
+				if (FileSize == file.Length)
+				{
+					ReceviceFileCount++;
+				}
+				else
+				{
+					Console.WriteLine("Размер принятого файла не соответствует отправленному ({0} != {1}).", FileSize, file.Length);
+				}
+			}
 
 			// Если требуется, то вызываем подпрорамму.
 			if (message_type == MesasageType.ReveiveFileAndExecProc)
 			{
-				ExecProcAndSendFile(tmp_file_name, remote_address, 1234);
+				ExecProcAndSendFile(tmp_file_name, remote_address, _remotePort);
 			}
 			else
 			{
-				File.Delete(tmp_file_name);
+				if (IsDeleteFiles)
+				{
+					File.Delete(tmp_file_name);
+				}
 			}
 		}
 
@@ -255,20 +295,26 @@ namespace SimpleFileTransfer
 					// Устанавливаем параметры запуска подпрограммы.
 					var proc = new Process
 					{
+						
 						StartInfo =
 						{
 							FileName = "CopyPaster.exe",
-							Arguments = string.Format("{0} {1}", file_name, copy_file_name)
+							Arguments = string.Format("{0} {1}", file_name, copy_file_name),
+							CreateNoWindow = true
 						}
 					};
+
 					// Запускаем и ожидаем окончания выполнения.
 					proc.Start();
 					proc.WaitForExit();
 					// Возвращаем результат выполнения по указанному IP-адресу.
 					SendFile(ip_address, port, copy_file_name);
 
-					File.Delete(file_name);
-					File.Delete(copy_file_name);
+					if (IsDeleteFiles)
+					{
+						File.Delete(file_name);
+						File.Delete(copy_file_name);
+					}
 					Console.WriteLine("Выполнена подпрограмма и результат отправлен по адресу {0}", ip_address);
 				}
 				catch (Exception e)

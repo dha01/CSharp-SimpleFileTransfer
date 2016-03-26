@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Net;
 
 namespace SimpleFileTransfer
 {
@@ -38,9 +39,27 @@ namespace SimpleFileTransfer
 
 					switch (command.First())
 					{
+						case "d":
+							Server.IsDeleteFiles = int.Parse(command[1]) != 0;
+							if (Server.IsDeleteFiles)
+							{
+								Console.WriteLine("Удаление принятых файлов включено.");
+							}
+							else
+							{
+								Console.WriteLine("Удаление принятых файлов отключено.");
+							}
+							break;
 						case "ss":
 						case "StartServer":
-							Server.Start(command[1], int.Parse(command[2]));
+							int? remote_port = null;
+
+							if (command.Length == 4)
+							{
+								remote_port = int.Parse(command[3]);
+							}
+
+							Server.Start(command[1], int.Parse(command[2]), remote_port);
 							Console.WriteLine("Сервер запущен. Локальный адрес {0}:{1}", command[1], int.Parse(command[2]));
 							break;
 						case "sf":
@@ -55,7 +74,27 @@ namespace SimpleFileTransfer
 							Console.WriteLine("Файл {0} отправлен по адресу {1}:{2}. Ожидается файл с результатом.", command[3], command[1], command[2]);
 							break;
 						case "Test":
-							new Test().StartTest(int.Parse(command[1]));
+
+							int count;
+							IPAddress ip;
+							int port;
+
+							if (!int.TryParse(command[1], out count))
+							{
+								throw new Exception("Неправильно введено количество запросов.");
+							}
+
+							if (!IPAddress.TryParse(command[2], out ip))
+							{
+								throw new Exception("Неправильно введен IP.");
+							}
+
+							if (!int.TryParse(command[3], out port))
+							{
+								throw new Exception("Неправильно введен порт.");
+							}
+
+							new Test().StartTest(count, ip, port, command[4]);
 							break;
 						case "sst":
 							Server.Start("192.168.1.64", 1234);
