@@ -41,7 +41,7 @@ namespace SimpleFileTransfer
 		/// <summary>
 		/// Лиммт времени на приём данных.
 		/// </summary>
-		private const int TIMEOUT = 800;
+		private const int TIMEOUT = 5800;
 
 		/// <summary>
 		/// Cокет
@@ -55,7 +55,7 @@ namespace SimpleFileTransfer
 		#endregion
 
 		#region Methods
-
+		public static ManualResetEvent allDone = new ManualResetEvent(false);
 		/// <summary>
 		/// Запуск сервера.
 		/// </summary>
@@ -64,14 +64,7 @@ namespace SimpleFileTransfer
 		public bool Start(string ip_address, int port, int? remote_port = null)
 		{
 			PORT = port;
-			if (!remote_port.HasValue)
-			{
-				_remotePort = port;
-			}
-			else
-			{
-				_remotePort = remote_port.Value;
-			}
+			_remotePort = remote_port ?? port;
 			
 			if (Running) return false; // Если уже запущено, то выходим
 
@@ -91,40 +84,45 @@ namespace SimpleFileTransfer
 			}
 
 			// Наш поток ждет новые подключения и создает новые потоки.
-			Thread request_listener = new Thread(() =>
+			new Task(() =>
 			{
 				while (Running)
 				{
-					Socket clientSocket;
 					try
 					{
-						clientSocket = _serverSocket.Accept();
-						// Создаем новый поток для нового клиента и продолжаем слушать сокет.
-						Task request_handler = new Task(() =>
-						{
-							clientSocket.ReceiveTimeout = TIMEOUT;
-							clientSocket.SendTimeout = TIMEOUT;
-							try
-							{
-								Receive(clientSocket);
-							}
-							catch
-							{
-								try
-								{
-									clientSocket.Close();
-								}
-								catch { }
-							}
-						});
-						request_handler.Start();
+						allDone.Reset();
+
+						Console.WriteLine("Waiting for a connection...");
+						_serverSocket.BeginAccept(new AsyncCallback(AcceptCallback), _serverSocket);
+
+						allDone.WaitOne();
 					}
-					catch { }
+					catch(Exception e)
+					{
+						Console.WriteLine(e.Message);
+					}
 				}
-			});
-			request_listener.Start();
+			}).Start();
 
 			return true;
+		}
+
+		public void AcceptCallback(IAsyncResult ar)
+		{
+			try
+			{
+				// Signal the main thread to continue.
+				allDone.Set();
+
+				// Get the socket that handles the client request.
+				Socket listener = (Socket)ar.AsyncState;
+				Socket handler = listener.EndAccept(ar);
+				Receive(handler);
+			}
+			catch (Exception e)
+			{
+				Console.WriteLine(e.Message);
+			}
 		}
 
 		/// <summary>
@@ -181,23 +179,22 @@ namespace SimpleFileTransfer
 				FileSize = file.Length;
 			}
 
+			// Устанавливаем соединение через сокет.
+			Socket socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+			socket.Connect(new IPEndPoint(ip, port));
+			
 			// Открываем файл для чтения.
 			using (var fs = new FileStream(file_name, FileMode.Open, FileAccess.Read, FileShare.Read))
 			{
-				// Устанавливаем соединение через сокет.
-				Socket socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-				socket.Connect(new IPEndPoint(ip, port));
-
-				// Отправляем тип сообщения.
-				socket.Send(new[] { (byte)(exec_proc ? MesasageType.ReveiveFileAndExecProc : MesasageType.ReceiveFile) }, 1, SocketFlags.None);
-
-				// Отправляем файл блоками размером MAX_PART_SIZE байт, до тех пор пока не будет считан весь файл.
 				byte[] part = new byte[MAX_PART_SIZE];
-				while (true)
+				// Отправляем тип сообщения.
+				part[0] = (byte) (exec_proc ? MesasageType.ReveiveFileAndExecProc : MesasageType.ReceiveFile);
+				var size = 1;
+				// Отправляем файл блоками размером MAX_PART_SIZE байт, до тех пор пока не будет считан весь файл.
+				while (size > 0)
 				{
-					var size = fs.Read(part, 0, MAX_PART_SIZE);
-					if (size == 0) break;
 					socket.Send(part, size, SocketFlags.None);
+					size = fs.Read(part, 0, MAX_PART_SIZE);
 				}
 
 				// Закрываем соединения.
@@ -210,7 +207,7 @@ namespace SimpleFileTransfer
 		/// Отправляет файл по указанному адресу.
 		/// </summary>
 		/// <param name="ip">Удаленный IP-адрес.</param>
-		/// <param name="port"></param>
+		/// <param name="port">Порт.</param>
 		/// <param name="file_name">Удаленный порт.</param>
 		/// <param name="exec_proc">Будет ли вызвано выполнение подпрограммы на принимающей стороне.</param>
 		static public void SendFile(string ip, int port, string file_name, bool exec_proc = false)
@@ -242,15 +239,13 @@ namespace SimpleFileTransfer
 				{
 					var received_count = socket.Receive(buffer, MAX_PART_SIZE, SocketFlags.None);
 					if (received_count == 0) break;
+
 					fs.Write(buffer, 0, received_count);
 				}
-				
 				Console.WriteLine("Получен файл от {0}.", remote_address);
 			}
 
 			FileInfo file = new FileInfo(tmp_file_name);
-
-			//Test.Log(string.Format("Принят файл"));
 
 			if(FileSize.HasValue)
 			{
@@ -283,11 +278,11 @@ namespace SimpleFileTransfer
 		/// </summary>
 		/// <param name="file_name">Имя файла с фходными данными для подпрограммы.</param>
 		/// <param name="ip_address">IP-адрес для возврата результата выполнения.</param>
-		/// <param name="port"></param>
+		/// <param name="port">Порт.</param>
 		private void ExecProcAndSendFile(string file_name, string ip_address, int port)
 		{
 			// Создаем новую нить для выполнения подпрограммы.
-			var proccess = new Thread(() =>
+			new Task(() =>
 			{
 				try
 				{
@@ -295,12 +290,12 @@ namespace SimpleFileTransfer
 					// Устанавливаем параметры запуска подпрограммы.
 					var proc = new Process
 					{
-						
 						StartInfo =
 						{
 							FileName = "CopyPaster.exe",
 							Arguments = string.Format("{0} {1}", file_name, copy_file_name),
-							CreateNoWindow = true
+							CreateNoWindow = true,
+							UseShellExecute = false,
 						}
 					};
 
@@ -321,10 +316,7 @@ namespace SimpleFileTransfer
 				{
 					Console.WriteLine(e.Message);
 				}
-			});
-
-			// Запускаем нить.
-			proccess.Start();
+			}).Start();
 		}
 	}
 }
