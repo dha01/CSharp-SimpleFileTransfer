@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -170,7 +173,8 @@ namespace SimpleFileTransfer
 		/// <param name="port"></param>
 		/// <param name="file_name">Удаленный порт.</param>
 		/// <param name="exec_proc">Будет ли вызвано выполнение подпрограммы на принимающей стороне.</param>
-		static public void SendFile(IPAddress ip, int port, string file_name, bool exec_proc = false)
+		/// <param name="is_delete_file"></param>
+		static public void SendFile(IPAddress ip, int port, string file_name, bool exec_proc = false, bool is_delete_file = false)
 		{
 			FileInfo file = new FileInfo(file_name);
 
@@ -182,25 +186,24 @@ namespace SimpleFileTransfer
 			// Устанавливаем соединение через сокет.
 			Socket socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 			socket.Connect(new IPEndPoint(ip, port));
-			
-			// Открываем файл для чтения.
-			using (var fs = new FileStream(file_name, FileMode.Open, FileAccess.Read, FileShare.Read))
-			{
-				byte[] part = new byte[MAX_PART_SIZE];
-				// Отправляем тип сообщения.
-				part[0] = (byte) (exec_proc ? MesasageType.ReveiveFileAndExecProc : MesasageType.ReceiveFile);
-				var size = 1;
-				// Отправляем файл блоками размером MAX_PART_SIZE байт, до тех пор пока не будет считан весь файл.
-				while (size > 0)
-				{
-					socket.Send(part, size, SocketFlags.None);
-					size = fs.Read(part, 0, MAX_PART_SIZE);
-				}
+			var ns = new NetworkStream(socket);
+			var fs = new FileStream(file_name, FileMode.Open, FileAccess.Read, FileShare.Read);
 
-				// Закрываем соединения.
+			ns.WriteByte((byte)(exec_proc ? MesasageType.ReveiveFileAndExecProc : MesasageType.ReceiveFile));
+			fs.CopyToAsync(ns).ContinueWith((ar) =>
+			{
+				fs.Close();
+				fs.Dispose();
 				socket.Shutdown(SocketShutdown.Both);
 				socket.Close();
-			}
+				ns.Close();
+				ns.Dispose();
+
+				if (is_delete_file)
+				{
+					File.Delete(file_name);
+				}
+			});
 		}
 
 		/// <summary>
@@ -210,9 +213,10 @@ namespace SimpleFileTransfer
 		/// <param name="port">Порт.</param>
 		/// <param name="file_name">Удаленный порт.</param>
 		/// <param name="exec_proc">Будет ли вызвано выполнение подпрограммы на принимающей стороне.</param>
-		static public void SendFile(string ip, int port, string file_name, bool exec_proc = false)
+		/// <param name="is_delete_file"></param>
+		static public void SendFile(string ip, int port, string file_name, bool exec_proc = false, bool is_delete_file = false)
 		{
-			SendFile(IPAddress.Parse(ip), port, file_name, exec_proc);
+			SendFile(IPAddress.Parse(ip), port, file_name, exec_proc, is_delete_file);
 		}
 
 		/// <summary>
@@ -225,52 +229,46 @@ namespace SimpleFileTransfer
 			var tmp_file_name = string.Format("{0}_{1}", DateTime.Now.Ticks, _fileCount);
 			_fileCount++;
 
-			byte[] buffer = new byte[MAX_PART_SIZE];
-			// Получаем тип сообщения.
-			socket.Receive(buffer, 1, SocketFlags.None);
-			var message_type = (MesasageType) buffer[0];
-
+			var ns = new NetworkStream(socket);
+			
 			var remote_address = (socket.RemoteEndPoint as IPEndPoint).Address.ToString();
+			var message_type = (MesasageType)ns.ReadByte();
 
-			// Получаем файл.
-			using (var fs = new FileStream(tmp_file_name, FileMode.CreateNew))
+			var fs = new FileStream(tmp_file_name, FileMode.CreateNew);
+
+			ns.CopyToAsync(fs).ContinueWith((ar) =>
 			{
-				while (true)
+				fs.Close();
+				fs.Dispose();
+				ns.Close();
+				ns.Dispose();
+				FileInfo file = new FileInfo(tmp_file_name);
+				if (FileSize.HasValue)
 				{
-					var received_count = socket.Receive(buffer, MAX_PART_SIZE, SocketFlags.None);
-					if (received_count == 0) break;
-
-					fs.Write(buffer, 0, received_count);
+					if (FileSize == file.Length)
+					{
+						ReceviceFileCount++;
+					}
+					else
+					{
+						Console.WriteLine("Размер принятого файла не соответствует отправленному ({0} != {1}).", FileSize, file.Length);
+					}
 				}
-				Console.WriteLine("Получен файл от {0}.", remote_address);
-			}
 
-			FileInfo file = new FileInfo(tmp_file_name);
+				Console.WriteLine("Получен файл");
 
-			if(FileSize.HasValue)
-			{
-				if (FileSize == file.Length)
+				if (message_type == MesasageType.ReveiveFileAndExecProc)
 				{
-					ReceviceFileCount++;
+					ExecProcAndSendFile(tmp_file_name, remote_address, _remotePort);
 				}
 				else
 				{
-					Console.WriteLine("Размер принятого файла не соответствует отправленному ({0} != {1}).", FileSize, file.Length);
+					if (IsDeleteFiles)
+					{
+						File.Delete(tmp_file_name);
+					}
 				}
-			}
-
-			// Если требуется, то вызываем подпрорамму.
-			if (message_type == MesasageType.ReveiveFileAndExecProc)
-			{
-				ExecProcAndSendFile(tmp_file_name, remote_address, _remotePort);
-			}
-			else
-			{
-				if (IsDeleteFiles)
-				{
-					File.Delete(tmp_file_name);
-				}
-			}
+			});
 		}
 
 		/// <summary>
@@ -302,13 +300,18 @@ namespace SimpleFileTransfer
 					// Запускаем и ожидаем окончания выполнения.
 					proc.Start();
 					proc.WaitForExit();
+					/*
+					string[] input = new string[2];
+					input[0] = file_name;
+					input[1] = copy_file_name;
+					ExecBin("CopyPaster.exe", input);*/
+
 					// Возвращаем результат выполнения по указанному IP-адресу.
-					SendFile(ip_address, port, copy_file_name);
+					SendFile(ip_address, port, copy_file_name, false, IsDeleteFiles);
 
 					if (IsDeleteFiles)
 					{
 						File.Delete(file_name);
-						File.Delete(copy_file_name);
 					}
 					Console.WriteLine("Выполнена подпрограмма и результат отправлен по адресу {0}", ip_address);
 				}
@@ -317,6 +320,29 @@ namespace SimpleFileTransfer
 					Console.WriteLine(e.Message);
 				}
 			}).Start();
+		}
+
+		private static Dictionary<string, byte[]> ProgrammCash = new Dictionary<string, byte[]>(); 
+
+		private static void ExecBin(string name, string[] arguments)
+		{
+			if (!ProgrammCash.Keys.Contains(name))
+			{
+				FileStream fs = new FileStream(name, FileMode.Open);
+				BinaryReader br = new BinaryReader(fs);
+				ProgrammCash.Add(name, br.ReadBytes(Convert.ToInt32(fs.Length)));
+				fs.Close();
+				br.Close();
+			}
+		
+			Assembly a = Assembly.Load(ProgrammCash[name]);
+			MethodInfo method = a.EntryPoint;
+
+			if (method != null)
+			{
+				
+				method.Invoke(null, new object[] { arguments });
+			}
 		}
 	}
 }

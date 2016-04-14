@@ -1,6 +1,8 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 
 namespace SimpleFileTransfer
 {
@@ -29,6 +31,23 @@ namespace SimpleFileTransfer
 		
 		static void Main(string[] args)
 		{
+		/*	FileStream fs = new FileStream("CopyPaster.exe", FileMode.Open);
+			BinaryReader br = new BinaryReader(fs);
+			byte[] bin = br.ReadBytes(Convert.ToInt32(fs.Length));
+			fs.Close();
+			br.Close();
+			/*
+			Assembly a = Assembly.Load(bin);
+			MethodInfo method = a.EntryPoint;
+
+			if (method != null) {
+				string[] input = new string[2];
+				input[0] = "1.jpg";
+				input[1] = "25.jpg";
+				method.Invoke(null, new object[] { input });
+			}*/
+			
+			
 			while (true)
 			{
 				try
