@@ -15,6 +15,11 @@ namespace SimpleFileTransfer
 	{
 		#region Fields
 
+		/// <summary>
+		/// Является текущая ОС Windows.
+		/// </summary>
+		private static bool? is_os_windows;
+
 		static public int ReceviceFileCount = 0;
 
 		static public long? FileSize = null;
@@ -58,6 +63,19 @@ namespace SimpleFileTransfer
 		#endregion
 
 		#region Methods
+
+		/// <summary>
+		/// Статический конструктор. Определяет является ли используемая ОС Windows.
+		/// </summary>
+		static Server()
+		{
+			is_os_windows =
+				Environment.OSVersion.Platform == PlatformID.Win32NT ||
+				Environment.OSVersion.Platform == PlatformID.Win32S ||
+				Environment.OSVersion.Platform == PlatformID.Win32Windows ||
+				Environment.OSVersion.Platform == PlatformID.WinCE;
+		}
+
 		public static ManualResetEvent allDone = new ManualResetEvent(false);
 		/// <summary>
 		/// Запуск сервера.
@@ -292,8 +310,8 @@ namespace SimpleFileTransfer
 						{
 							FileName = "CopyPaster.exe",
 							Arguments = string.Format("{0} {1}", file_name, copy_file_name),
-							CreateNoWindow = true,
-							UseShellExecute = false,
+							CreateNoWindow = is_os_windows.Value,
+							UseShellExecute = !is_os_windows.Value
 						}
 					};
 

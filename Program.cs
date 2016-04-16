@@ -31,7 +31,9 @@ namespace SimpleFileTransfer
 		
 		static void Main(string[] args)
 		{
-		/*	FileStream fs = new FileStream("CopyPaster.exe", FileMode.Open);
+			Console.WriteLine("OS : {0}", Environment.OSVersion);
+			
+			/*	FileStream fs = new FileStream("CopyPaster.exe", FileMode.Open);
 			BinaryReader br = new BinaryReader(fs);
 			byte[] bin = br.ReadBytes(Convert.ToInt32(fs.Length));
 			fs.Close();
@@ -52,6 +54,7 @@ namespace SimpleFileTransfer
 			{
 				try
 				{
+					Console.Write("Input command: ");
 					string[] command = Console.ReadLine().Split(' ');
 
 					Console.WriteLine("");
@@ -122,6 +125,28 @@ namespace SimpleFileTransfer
 						case "ssd":
 							Server.Start("192.168.1.64", 1235);
 							Console.WriteLine("Сервер запущен. Локальный адрес {0}", "192.168.1.64:1235");
+							break;
+
+						case "help":
+							Console.WriteLine(@"
+Command list:
+n
+1 Format	: ss <local_ip> <local_port> [<remote_port>]
+  Sample	: ss 192.168.1.64 1234 1235
+  Description	: Start server
+
+2 Format	: Test <file_count> <remote_ip> <remote_port> <file_name>
+  Sample	: Test 1 192.168.1.64 1235 1.jpg
+  Description	: Send and receive 25 files and write statistic in Log.txt
+
+3 Format	: sf <remote_ip> <remote_port> <file_name>
+  Sample	: sf 192.168.1.64 1235 1.jpg
+  Description	: Send file to remote server
+
+4 Format	: sfaep <remote_ip> <remote_port> <file_name>
+  Sample	: sfaep 192.168.1.64 1235 1.jpg
+  Description	: Send file to remote server with flag exec proc and return value
+");
 							break;
 						default:
 							Console.WriteLine("Команда не найдена.");
