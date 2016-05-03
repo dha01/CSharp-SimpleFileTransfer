@@ -24,3 +24,13 @@ SendFile 192.168.1.64 1.txt
 Необходимо, чтобы был запущен сервер со стороны отправителя для получения файла с результатами выполнения.
 Пример:
 SendFileAndExecProc 192.168.1.64 1.txt
+
+Запуск на сервере:
+cd ..
+cd ..
+cd ..
+rm -r -f CSharp-SimpleFileTransfer
+git clone https://github.com/dha01/CSharp-SimpleFileTransfer.git
+cd CSharp-SimpleFileTransfer/bin/Debug
+srun -t1 -n2 mono SimpleFileTransfer.exe
+go 1 CopyPaster.exe 12516 12517
