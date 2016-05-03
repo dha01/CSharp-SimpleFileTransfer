@@ -46,6 +46,15 @@ namespace SimpleFileTransfer
 							Server.SendFile(command[1], command[2], true);
 							Console.WriteLine("Файл {0} отправлен по адресу {1}. Ожидается файл с результатом.", command[2], command[1]);
 							break;
+						case "env":
+							var env_list = Environment.GetEnvironmentVariables();
+							foreach (var key in env_list.Keys)
+							{
+								Console.WriteLine("{0} = {1}", key, env_list[key]);
+								Console.WriteLine("");
+							}
+							
+							break;
 						default:
 							Console.WriteLine("Команда не найдена.");
 							break;
