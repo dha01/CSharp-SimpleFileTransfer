@@ -61,6 +61,41 @@ namespace SimpleFileTransfer
 
 					switch (command.First())
 					{
+						case "go":
+							var list = Environment.GetEnvironmentVariables();
+
+							var n = (string)list["SLURM_PROCID"];
+							var ip_addr = (string)list["SLURM_LAUNCH_NODE_IPADDR"];
+
+							var srv_port = int.Parse(command[3]);
+							var test_port = int.Parse(command[4]);
+						
+							// Сервер
+							if (int.Parse(n) == 0)
+							{
+								Console.WriteLine("PROCID = 0");
+								Server.Start(ip_addr, srv_port, test_port);
+								Console.WriteLine("PROCID = 0: запущен сервер {0} {1} {2}", ip_addr, srv_port, test_port);
+							}
+
+							// Тестер
+							if (int.Parse(n) == 1)
+							{
+								Console.WriteLine("PROCID = 1");
+								Server.Start(ip_addr, test_port, test_port);
+								Console.WriteLine("PROCID = 1: запущен сервер тестирования {0} {1} {2}", ip_addr, test_port, test_port);
+
+								int co = 0;
+
+								if (!int.TryParse(command[1], out co))
+								{
+									throw new Exception("Неправильно введено количество запросов.");
+								}
+
+								new Test().StartTest(co, IPAddress.Parse(ip_addr), srv_port, command[2]);
+							}
+
+							break;
 						case "d":
 							Server.IsDeleteFiles = int.Parse(command[1]) != 0;
 							if (Server.IsDeleteFiles)
