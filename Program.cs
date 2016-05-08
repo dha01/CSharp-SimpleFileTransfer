@@ -29,15 +29,16 @@ namespace SimpleFileTransfer
 			}
 		}
 
-		static void ExecCommand(string[] command)
+		static bool ExecCommand(string[] command)
 		{
 			switch (command.First())
 			{
 				case "pid":
 					if (Environment.GetEnvironmentVariables()["SLURM_PROCID"].Equals(command[1]))
 					{
-						ExecCommand(command.Skip(2).ToArray());
+						return ExecCommand(command.Skip(2).ToArray());
 					}
+					return false;
 					break;
 				case "go":
 					var list = Environment.GetEnvironmentVariables();
@@ -171,10 +172,23 @@ n
 						Console.WriteLine("");
 					}
 					break;
+				case "ip":
+					string host_name = Dns.GetHostName();
+					IPHostEntry ip_entry = Dns.GetHostEntry(host_name);
+					IPAddress[] addrs = ip_entry.AddressList;
+
+					Console.WriteLine("HostName: {0}", host_name);
+					foreach (var addr in addrs)
+					{
+						Console.WriteLine("IP-address: {0}", addr);
+					}
+					break;
 				default:
 					Console.WriteLine("Команда не найдена.");
 					break;
 			}
+
+			return true;
 		}
 		
 		static void Main(string[] args)
@@ -203,9 +217,10 @@ n
 				try
 				{
 					Console.Write("Input command: ");
-					string[] command = Console.ReadLine().Split(' ');
+					while (!ExecCommand(Console.ReadLine().Split(' ')))
+					{
+					}
 					Console.WriteLine("");
-					ExecCommand(command);
 				}
 				catch (Exception e)
 				{
