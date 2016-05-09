@@ -89,14 +89,31 @@ namespace SimpleFileTransfer
 				case "ss":
 				case "StartServer":
 					int? remote_port = null;
+					int? local_port = null;
+					string ipa = null;
+
 
 					if (command.Length == 4)
 					{
 						remote_port = int.Parse(command[3]);
 					}
 
-					Server.Start(command[1], int.Parse(command[2]), remote_port);
-					Console.WriteLine("Сервер запущен. Локальный адрес {0}:{1}", command[1], int.Parse(command[2]));
+					local_port = command.Length >= 3 ? int.Parse(command[2]) : 1234;
+
+					if (command.Length >= 2)
+					{
+						ipa = command[1];
+					}
+					else
+					{
+						string hn = Dns.GetHostName();
+						IPHostEntry ipe = Dns.GetHostEntry(hn);
+						IPAddress[] addrss = ipe.AddressList;
+						ipa = addrss.First().ToString();
+					}
+
+					Server.Start(ipa, local_port.Value, remote_port);
+					Console.WriteLine("Сервер запущен. Локальный адрес {0}:{1}", ipa, local_port);
 					break;
 				case "sf":
 				case "SendFile":
