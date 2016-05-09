@@ -14,6 +14,8 @@ namespace SimpleFileTransfer
 {
 	public class Server
 	{
+		private const string BROADCAST_ADDRESS = "224.0.0.0";
+
 		#region Fields
 
 		/// <summary>
@@ -28,9 +30,11 @@ namespace SimpleFileTransfer
 		/// <summary>
 		/// Порт.
 		/// </summary>
-		private int PORT = 1234;
+		private int _localPort = 1234;
 
 		private int _remotePort = 1234;
+
+		private string _localAddress;
 
 		/// <summary>
 		/// Максимальный размер очереди.
@@ -78,6 +82,68 @@ namespace SimpleFileTransfer
 		}
 
 		public static ManualResetEvent allDone = new ManualResetEvent(false);
+
+		private void Broadcast(string ip_address)
+		{
+			UdpClient receiver = new UdpClient(6666); // UdpClient для получения данных
+			receiver.JoinMulticastGroup(IPAddress.Parse(BROADCAST_ADDRESS), 50);
+
+			IPEndPoint remoteIp = null;
+			new Task(() =>
+			{
+				while (true)
+				{
+					try
+					{
+						while (true)
+						{
+							byte[] data = receiver.Receive(ref remoteIp); // получаем данные
+							if (remoteIp.Address.ToString().Equals(ip_address))
+								continue;
+							string message = Encoding.Unicode.GetString(data);
+							Console.WriteLine("ReceiveMessage: {0}",message);
+						}
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine(ex.Message);
+					}
+					finally
+					{
+						receiver.Close();
+					}
+				}
+			}).Start();
+		}
+
+		private void SendMessage()
+		{
+			new Task(() =>
+			{
+
+				UdpClient sender = new UdpClient(); // создаем UdpClient для отправки
+				IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(BROADCAST_ADDRESS), 6666);
+				try
+				{
+					while (true)
+					{
+						string message = String.Format("{0} {1} {2}", _localAddress, _localPort, _remotePort);
+						byte[] data = Encoding.Unicode.GetBytes(message);
+						sender.Send(data, data.Length, endPoint); // отправка
+						Thread.Sleep(5000);
+					}
+				}
+				catch (Exception ex)
+				{
+					Console.WriteLine(ex.Message);
+				}
+				finally
+				{
+					sender.Close();
+				}
+			}).Start();
+		}
+
 		/// <summary>
 		/// Запуск сервера.
 		/// </summary>
@@ -85,8 +151,10 @@ namespace SimpleFileTransfer
 		/// <returns></returns>
 		public bool Start(string ip_address, int port, int? remote_port = null)
 		{
-			PORT = port;
+			_localPort = port;
 			_remotePort = remote_port ?? port;
+
+			_localAddress = ip_address;
 			
 			if (Running) return false; // Если уже запущено, то выходим
 
@@ -94,7 +162,7 @@ namespace SimpleFileTransfer
 			{
 				// tcp/ip сокет (ipv4)
 				_serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-				_serverSocket.Bind(new IPEndPoint(IPAddress.Parse(ip_address), PORT));
+				_serverSocket.Bind(new IPEndPoint(IPAddress.Parse(ip_address), _localPort));
 				_serverSocket.Listen(MAX_QUEUE);
 				_serverSocket.ReceiveTimeout = TIMEOUT;
 				_serverSocket.SendTimeout = TIMEOUT;
@@ -104,6 +172,8 @@ namespace SimpleFileTransfer
 			{
 				return false;
 			}
+			Broadcast(ip_address);
+			SendMessage();
 
 			// Наш поток ждет новые подключения и создает новые потоки.
 			new Task(() =>
@@ -275,7 +345,7 @@ namespace SimpleFileTransfer
 			{
 				byte[] buffer = new byte[256];
 				socket.Receive(buffer);
-				Console.WriteLine("Принято сообщение: {0}", buffer);
+				Console.WriteLine("Принято сообщение: {0}", Encoding.Unicode.GetString(buffer));
 				return;
 			}
 
