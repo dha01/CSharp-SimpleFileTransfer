@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -181,7 +182,9 @@ namespace SimpleFileTransfer
 			/// <summary>
 			/// Принять файл и вызвать подпрограмму.
 			/// </summary>
-			ReveiveFileAndExecProc = 2
+			ReveiveFileAndExecProc = 2,
+
+			Text = 3
 		}
 
 		/// <summary>
@@ -238,6 +241,22 @@ namespace SimpleFileTransfer
 		}
 
 		/// <summary>
+		/// Отправляет файл по указанному адресу.
+		/// </summary>
+		/// <param name="ip_address">Удаленный IP-адрес.</param>
+		/// <param name="port">Порт.</param>
+		static public void SendText(string ip_address, int port, string text)
+		{
+			var ip = IPAddress.Parse(ip_address);
+			using (var socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp))
+			{
+				socket.Connect(new IPEndPoint(ip, port));
+				socket.Send(new[] { (byte)MesasageType.Text });
+				socket.Send(Encoding.Unicode.GetBytes(text));
+			}
+		}
+
+		/// <summary>
 		/// Приём файла.
 		/// </summary>
 		/// <param name="socket">Сокет.</param>
@@ -251,6 +270,14 @@ namespace SimpleFileTransfer
 			
 			var remote_address = (socket.RemoteEndPoint as IPEndPoint).Address.ToString();
 			var message_type = (MesasageType)ns.ReadByte();
+
+			if (message_type == MesasageType.Text)
+			{
+				byte[] buffer = new byte[256];
+				socket.Receive(buffer);
+				Console.WriteLine("Принято сообщение: {0}", buffer);
+				return;
+			}
 
 			var fs = new FileStream(tmp_file_name, FileMode.CreateNew);
 

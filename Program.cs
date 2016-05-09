@@ -100,7 +100,7 @@ namespace SimpleFileTransfer
 					break;
 				case "sf":
 				case "SendFile":
-					Server.SendFile(command[1], int.Parse(command[2]), command[2]);
+					Server.SendFile(command[1], int.Parse(command[2]), command[3]);
 					Console.WriteLine("Файл {0} отправлен по адресу {1}.", command[2], command[1]);
 					break;
 
@@ -182,6 +182,10 @@ n
 					{
 						Console.WriteLine("IP-address: {0}", addr);
 					}
+					break;
+				case "st":
+					Server.SendText(command[1], int.Parse(command[2]), command[3]);
+					Console.WriteLine("Отправлено сообщение: {0}", command[3]);
 					break;
 				default:
 					Console.WriteLine("Команда не найдена.");
